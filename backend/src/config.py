@@ -4,6 +4,9 @@
 from pathlib import Path
 from pydantic_settings import BaseSettings
 
+# 项目根目录 (backend/src/config.py → 向上三层)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
 
 class Settings(BaseSettings):
     """全局配置，自动从 .env 文件加载"""
@@ -40,7 +43,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     model_config = {
-        "env_file": ".env",
+        "env_file": str(PROJECT_ROOT / ".env"),
         "env_file_encoding": "utf-8",
     }
 
