@@ -4,13 +4,13 @@ const config: Config = {
   content: ["./src/**/*.{ts,tsx,mdx}"],
   theme: {
     extend: {
-      colors: {
-        primary: {
-          50: "#eff6ff",
-          500: "#3b82f6",
-          600: "#2563eb",
-          700: "#1d4ed8",
-        },
+      fontFamily: {
+        sans: ['"Inter"', "system-ui", "-apple-system", "sans-serif"],
+      },
+      animation: {
+        "fade-up": "fadeUp 0.6s ease-out forwards",
+        float: "float 3s ease-in-out infinite",
+        "pulse-glow": "pulse-glow 2s ease-in-out infinite",
       },
     },
   },

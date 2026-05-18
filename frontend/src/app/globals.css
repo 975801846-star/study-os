@@ -2,6 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+@layer base {
+  body {
+    @apply bg-slate-950 text-slate-100 antialiased;
+  }
 }
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-blue-400 via-indigo-400 to-violet-400 bg-clip-text text-transparent;
+  }
+  .card-glass {
+    @apply rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl;
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.2); }
+  50% { box-shadow: 0 0 40px rgba(59, 130, 246, 0.4); }
+}
+
+.animate-float { animation: float 3s ease-in-out infinite; }
+.animate-fade-up { animation: fadeUp 0.6s ease-out forwards; }
+.animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
