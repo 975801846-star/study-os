@@ -11,7 +11,7 @@
 StudyOS 是一个全栈 Web 应用，帮助留学生：
 
 - 📖 **导入教材** — 上传 PDF，自动解析为结构化知识库
-- 🎙 **课堂录音分析** — 上传录音 → Whisper 转文字 → LLM 提炼重点、标注废话
+- 🎙 **课堂录音分析** — 上传录音 → 本地 Whisper 转文字 → LLM 提炼重点、标注废话
 - 🧠 **AI 出题** — 基于教材和课堂重点，自动生成选择题、简答题、案例分析题
 - ✍️ **在线做题** — 答题 → 自动批改 → 错题归因到知识点 → 间隔复习
 - 📊 **学习仪表盘** — 各科进度、掌握度雷达图
@@ -23,7 +23,7 @@ StudyOS 是一个全栈 Web 应用，帮助留学生：
 |----|------|
 | 前端 | Next.js 14 · Tailwind CSS · shadcn/ui · Zustand |
 | 后端 | Python FastAPI · LangChain · ChromaDB |
-| AI | DeepSeek (LLM) · OpenAI Whisper (STT) · text-embedding-3-small |
+| AI | DeepSeek (LLM) · Whisper 本地模型 (STT) · sentence-transformers |
 | 存储 | SQLite · ChromaDB · 文件系统 |
 | 导出 | Pandoc · WeasyPrint |
 

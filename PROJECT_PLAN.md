@@ -53,8 +53,8 @@
 │                                                      │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────┐  │
 │  │ PDF 解析服务 │  │ 语音转写服务  │  │ LLM 服务   │  │
-│  │ PyMuPDF     │  │ Whisper API  │  │ DeepSeek   │  │
-│  │ Marker      │  │ / local      │  │ Claude     │  │
+│  │ PyMuPDF     │  │ 本地 Whisper │  │ DeepSeek   │  │
+│  │ Marker      │  │ (开源模型)   │  │            │  │
 │  └─────────────┘  └──────────────┘  └────────────┘  │
 │                                                      │
 │  ┌──────────────────────────────────────────────┐   │
@@ -89,7 +89,7 @@
 | 向量数据库 | ChromaDB | 轻量、嵌入式、零运维、适合单用户 |
 | 主数据库 | SQLite | 零配置、单文件、备份简单 |
 | LLM | DeepSeek API | 便宜（¥1/百万 token）、中文优异 |
-| 语音转写 | OpenAI Whisper API | 准确率最高、多语言、按量付费 |
+| 语音转写 | 本地 Whisper (openai-whisper) | 免费开源、离线可用、英文准确率高 |
 | PDF 解析 | PyMuPDF + Marker | 文本提取 + 公式/表格保留 |
 | 导出 | Pandoc + WeasyPrint | Markdown→PDF 成熟方案 |
 | 认证 | 无（v1 单用户） | YAGNI，先做功能 |
@@ -119,7 +119,7 @@
 
 - [ ] **PDF 解析服务**：上传 PDF → PyMuPDF 提取文本 → Marker 结构化 → Markdown
 - [ ] **分块策略**：按章节/标题分块，保留层级关系
-- [ ] **向量化**：text-embedding-3-small → ChromaDB 存储
+- [ ] **向量化**：all-MiniLM-L6-v2 本地模型 → ChromaDB 存储
 - [ ] **前端教材页**：左侧目录树 + 右侧正文渲染
 - [ ] **全文搜索**：关键词 + 语义混合搜索
 
@@ -380,14 +380,13 @@ cd frontend && npm run dev
 DEEPSEEK_API_KEY=sk-xxx
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 
-# 语音转写
-OPENAI_API_KEY=sk-xxx  # Whisper API
-# 或本地 Whisper
-WHISPER_MODEL=medium    # tiny/base/small/medium/large
+# 语音转写 (本地 Whisper，免费开源)
+WHISPER_PROVIDER=local
+WHISPER_MODEL=medium    # tiny/base/small/medium/large-v3
 
-# 向量化
-EMBEDDING_MODEL=text-embedding-3-small
-EMBEDDING_API_KEY=sk-xxx
+# 向量化 (本地 sentence-transformers，免费)
+EMBEDDING_MODEL=all-MiniLM-L6-v2
+EMBEDDING_DIMENSIONS=384
 
 # 数据库
 CHROMA_PERSIST_DIR=./data/chroma
@@ -417,11 +416,11 @@ EXPORT_DIR=./data/exports
 | 服务 | 用量估算 | 月费 |
 |------|----------|------|
 | DeepSeek API | 出题+摘要，约 1M token/月 | ¥1-2 |
-| OpenAI Whisper | 每周 3 节课 × 2h = 6h 音频/月 | ¥20-30 |
-| Embedding API | 教材向量化，一次性约 ¥5 | ¥5 |
+| 本地 Whisper | 首次下载模型约 1.5GB (medium)，之后免费 | ¥0 |
+| Embedding | 本地运行，首次下载模型约 80MB | ¥0 |
 | Vercel (前端) | 静态部署 | 免费 |
 | Railway/Render (后端) | 512MB RAM | 免费额度 / $5 |
-| **合计** | | **≈ ¥30-50/月** |
+| **合计** | | **≈ ¥1-2/月** |
 
 ---
 

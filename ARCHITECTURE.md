@@ -30,7 +30,7 @@
 
 ### ADR-003: DeepSeek 作为主 LLM
 
-**决策**：优先使用 DeepSeek API，OpenAI/Claude 作为后备。
+**决策**：优先使用 DeepSeek API 作为唯一 LLM。
 
 **理由**：
 - DeepSeek 中文能力优秀（教材标注、题目解析）

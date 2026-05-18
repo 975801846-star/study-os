@@ -13,16 +13,13 @@ class Settings(BaseSettings):
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_MODEL: str = "deepseek-chat"
 
-    # OpenAI (Whisper + Embedding)
-    OPENAI_API_KEY: str = ""
+    # 语音转写 (本地 Whisper)
+    WHISPER_PROVIDER: str = "local"   # local (免费开源)
+    WHISPER_MODEL: str = "medium"     # tiny/base/small/medium/large-v3
 
-    # 语音转写
-    WHISPER_PROVIDER: str = "openai"  # openai | local
-    WHISPER_MODEL: str = "medium"     # tiny/base/small/medium/large
-
-    # 向量化
-    EMBEDDING_MODEL: str = "text-embedding-3-small"
-    EMBEDDING_DIMENSIONS: int = 1536
+    # 向量化 (本地 sentence-transformers)
+    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    EMBEDDING_DIMENSIONS: int = 384
 
     # 数据库
     CHROMA_PERSIST_DIR: str = "./data/chroma"
