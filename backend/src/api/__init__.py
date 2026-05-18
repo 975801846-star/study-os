@@ -11,9 +11,10 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import QuestionItem, Quiz, QuizSubmission, WrongBookItem
+from ..models import Quiz, QuizSubmission, WrongBookItem
 from ..schemas import (
     FeedbackItem,
+    QuestionItem,
     QuizGenerateRequest,
     QuizResponse,
     SubmitAnswerRequest,
