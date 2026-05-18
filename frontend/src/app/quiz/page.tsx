@@ -1,14 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   BrainCircuit,
   Check,
   ChevronLeft,
+  FileText,
   Lightbulb,
   Loader2,
   Sparkles,
   Target,
+  Upload,
   X,
 } from "lucide-react";
 import { useQuizStore } from "@/store";
@@ -28,6 +30,43 @@ const diffOptions = [
 export default function QuizPage() {
   const store = useQuizStore();
   const [showSettings, setShowSettings] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUpload = async (file: File) => {
+    if (!file) return;
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (!["pdf", "txt", "md"].includes(ext || "")) {
+      alert("仅支持 PDF / TXT / MD 文件");
+      return;
+    }
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/quizzes/upload-source", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "上传失败");
+      store.setSourceContent(data.data.content);
+      setUploadedFile(`${data.data.filename} (${(data.data.char_count / 1000).toFixed(1)}k 字${data.data.truncated ? "，已截取" : ""})`);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleUpload(file);
+  };
 
   // ── Step 1: 输入材料 ──
   if (!store.quizId) {
@@ -124,11 +163,75 @@ export default function QuizPage() {
           </div>
         )}
 
+        {/* Upload Zone */}
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={`mb-3 cursor-pointer rounded-xl border-2 border-dashed p-6 text-center transition-all ${
+            dragOver
+              ? "border-blue-400/50 bg-blue-500/10"
+              : uploadedFile
+              ? "border-emerald-500/30 bg-emerald-500/5"
+              : "border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]"
+          }`}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.txt,.md"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleUpload(file);
+            }}
+          />
+          {uploading ? (
+            <div className="flex items-center justify-center gap-2 text-slate-400">
+              <Loader2 size={18} className="animate-spin" />
+              <span className="text-sm">正在解析文档...</span>
+            </div>
+          ) : uploadedFile ? (
+            <div className="flex items-center justify-center gap-2 text-emerald-400">
+              <FileText size={18} />
+              <span className="text-sm font-medium">{uploadedFile}</span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  store.setSourceContent("");
+                  setUploadedFile(null);
+                }}
+                className="ml-2 rounded-md p-0.5 text-slate-500 hover:text-rose-400 transition-colors"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <div className="text-slate-500">
+              <Upload size={24} className="mx-auto mb-2" />
+              <span className="text-sm">
+                拖拽上传 PDF / TXT / MD 文档，或点击选择
+              </span>
+              <p className="mt-1 text-xs text-slate-600">
+                最大 20MB · PDF 自动解析文本
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Divider */}
+        <div className="mb-3 flex items-center gap-3">
+          <hr className="flex-1 border-white/5" />
+          <span className="text-[11px] text-slate-600">或手动粘贴</span>
+          <hr className="flex-1 border-white/5" />
+        </div>
+
         {/* Text Input */}
         <textarea
           value={store.sourceContent}
           onChange={(e) => store.setSourceContent(e.target.value)}
-          placeholder="在此粘贴学习材料、论文摘要、课堂笔记...（至少 50 字）"
+          placeholder="在此粘贴学习材料...（至少 50 字）"
           rows={12}
           className="w-full rounded-xl border border-white/10 bg-white/5 p-5 text-sm text-slate-200 placeholder-slate-600 backdrop-blur transition-colors focus:border-blue-500/50 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
         />

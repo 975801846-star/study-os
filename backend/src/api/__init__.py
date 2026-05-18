@@ -1,10 +1,13 @@
 """
-Quiz API — 出题 / 提交 / 批改
+Quiz API — 出题 / 提交 / 批改 / 文件上传
 """
 import json
+import os
+import tempfile
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+import pymupdf  # PyMuPDF
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -19,6 +22,61 @@ from ..schemas import (
 from ..services import generate_quiz, grade_submission
 
 router = APIRouter()
+
+
+@router.post("/upload-source")
+async def upload_source(file: UploadFile = File(...)):
+    """上传文档提取文本（支持 PDF / TXT / MD）"""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="文件名不能为空")
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in (".pdf", ".txt", ".md", ".markdown"):
+        raise HTTPException(status_code=400, detail=f"不支持的文件格式: {ext}，仅支持 PDF/TXT/MD")
+
+    content_bytes = await file.read()
+    max_size = 20 * 1024 * 1024  # 20MB
+    if len(content_bytes) > max_size:
+        raise HTTPException(status_code=400, detail="文件过大，限制 20MB")
+
+    try:
+        if ext == ".pdf":
+            # PyMuPDF 解析 PDF
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp.write(content_bytes)
+                tmp_path = tmp.name
+
+            doc = pymupdf.open(tmp_path)
+            text = ""
+            for page in doc:
+                text += page.get_text() + "\n"
+            doc.close()
+            os.unlink(tmp_path)
+        else:
+            # TXT / MD 直接解码
+            text = content_bytes.decode("utf-8", errors="replace")
+
+        text = text.strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="文档内容为空")
+
+        char_count = len(text)
+        truncated = char_count > 50000
+        if truncated:
+            text = text[:50000] + "\n\n（内容过长，已截取前 50000 字符）"
+
+        return {
+            "success": True,
+            "data": {
+                "filename": file.filename,
+                "format": ext,
+                "char_count": char_count,
+                "truncated": truncated,
+                "content": text,
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"文件解析失败: {str(e)}")
 
 
 @router.post("/generate", response_model=QuizResponse)
