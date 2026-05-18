@@ -4,25 +4,48 @@ Quiz Service — AI 出题 + 批改引擎
 DeepSeek V4 驱动：Pro 负责出题/批改，Flash 负责题型分类/格式校验
 """
 import json
-import uuid
+import logging
+import traceback
 
 from openai import OpenAI
 
 from ..config import settings
 
+logger = logging.getLogger("studyos.quiz")
+
 client = OpenAI(api_key=settings.DEEPSEEK_API_KEY, base_url=settings.DEEPSEEK_BASE_URL)
+
+
+class QuizServiceError(Exception):
+    """可安全返回给前端的错误"""
+    pass
 
 
 def _call_llm(prompt: str, use_pro: bool = True, temperature: float = 0.3) -> str:
     """调用 DeepSeek，自动选模型"""
     model = settings.DEEPSEEK_MODEL_PRO if use_pro else settings.DEEPSEEK_MODEL_FLASH
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=temperature,
-        max_tokens=4096,
-    )
-    return resp.choices[0].message.content.strip() if resp.choices[0].message.content else ""
+    logger.info(f"LLM call: model={model}, prompt_len={len(prompt)}")
+
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=temperature,
+            max_tokens=4096,
+        )
+    except Exception as e:
+        msg = str(e)
+        logger.error(f"DeepSeek API error: {msg}\n{traceback.format_exc()}")
+        # 提取有用信息
+        if "Connection" in msg or "connect" in msg.lower():
+            raise QuizServiceError(f"无法连接 DeepSeek API，请检查网络/代理设置：{msg[:200]}")
+        elif "auth" in msg.lower() or "401" in msg or "403" in msg:
+            raise QuizServiceError(f"API Key 认证失败，请检查 .env 中 DEEPSEEK_API_KEY：{msg[:200]}")
+        else:
+            raise QuizServiceError(f"DeepSeek API 调用失败：{msg[:200]}")
+
+    content = resp.choices[0].message.content
+    return content.strip() if content else ""
 
 
 SYSTEM_GENERATE = """你是一位大学课程助教，擅长根据学习材料生成高质量的测验题目。
@@ -115,11 +138,15 @@ def generate_quiz(
     try:
         questions = json.loads(raw)
     except json.JSONDecodeError:
-        # Retry with flash for format fix
-        fix_prompt = f"以下文本应该是一个 JSON 数组。请修复格式问题，只输出合法的 JSON 数组：\n{raw[:3000]}"
-        fixed = _call_llm(fix_prompt, use_pro=False, temperature=0)
-        fixed = fixed.strip().lstrip("```json").rstrip("```").strip()
-        questions = json.loads(fixed)
+        logger.warning(f"JSON parse failed, raw response preview: {raw[:500]}")
+        try:
+            # Retry with flash for format fix
+            fix_prompt = f"以下文本应该是一个 JSON 数组。请修复格式问题，只输出合法的 JSON 数组：\n{raw[:3000]}"
+            fixed = _call_llm(fix_prompt, use_pro=False, temperature=0)
+            fixed = fixed.strip().lstrip("```json").rstrip("```").strip()
+            questions = json.loads(fixed)
+        except Exception as e:
+            raise QuizServiceError(f"题目解析失败，AI 返回格式异常：{str(e)[:200]}")
 
     # Ensure unique IDs
     for i, q in enumerate(questions):
@@ -167,7 +194,6 @@ def grade_submission(
     Returns:
         (score, correct_count, total, feedback_list)
     """
-    # Build grading context
     q_text = json.dumps(questions, ensure_ascii=False, indent=2)
     a_text = json.dumps(answers, ensure_ascii=False, indent=2)
 
@@ -184,13 +210,44 @@ def grade_submission(
     try:
         feedback = json.loads(raw)
     except json.JSONDecodeError:
-        fix_prompt = f"修复以下 JSON：\n{raw[:3000]}"
-        fixed = _call_llm(fix_prompt, use_pro=False, temperature=0)
-        fixed = fixed.strip().lstrip("```json").rstrip("```").strip()
-        feedback = json.loads(fixed)
+        logger.warning(f"Grade JSON parse failed, raw: {raw[:500]}")
+        try:
+            fix_prompt = f"修复以下 JSON：\n{raw[:3000]}"
+            fixed = _call_llm(fix_prompt, use_pro=False, temperature=0)
+            fixed = fixed.strip().lstrip("```json").rstrip("```").strip()
+            feedback = json.loads(fixed)
+        except Exception as e:
+            raise QuizServiceError(f"批改结果解析失败：{str(e)[:200]}")
 
     total = len(feedback)
     correct = sum(1 for f in feedback if f.get("is_correct"))
     score = round(correct / total * 100, 1) if total > 0 else 0
 
     return score, correct, total, feedback
+
+
+def test_connection() -> dict:
+    """测试 DeepSeek API 连接"""
+    model = settings.DEEPSEEK_MODEL_FLASH
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": "回复OK"}],
+            max_tokens=10,
+        )
+        return {
+            "ok": True,
+            "model": model,
+            "base_url": settings.DEEPSEEK_BASE_URL,
+            "key_prefix": settings.DEEPSEEK_API_KEY[:10] + "..." if settings.DEEPSEEK_API_KEY else "(空)",
+            "response": resp.choices[0].message.content,
+        }
+    except Exception as e:
+        logger.error(f"Connection test failed: {e}")
+        return {
+            "ok": False,
+            "error": str(e),
+            "model": model,
+            "base_url": settings.DEEPSEEK_BASE_URL,
+            "key_prefix": settings.DEEPSEEK_API_KEY[:10] + "..." if settings.DEEPSEEK_API_KEY else "(空)",
+        }

@@ -20,9 +20,16 @@ from ..schemas import (
     SubmitAnswerRequest,
     SubmissionResponse,
 )
-from ..services import generate_quiz, grade_submission
+from ..services import QuizServiceError, generate_quiz, grade_submission, test_connection
 
 router = APIRouter()
+
+
+@router.get("/test-connection")
+async def api_test_connection():
+    """测试 DeepSeek API 连接（调试用）"""
+    result = test_connection()
+    return result
 
 
 @router.post("/upload-source")
@@ -91,6 +98,8 @@ def api_generate_quiz(req: QuizGenerateRequest, db: Session = Depends(get_db)):
             difficulty=req.difficulty,
             language=req.language,
         )
+    except QuizServiceError as e:
+        raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"生成失败: {str(e)}")
 
