@@ -23,7 +23,7 @@ StudyOS 是一个全栈 Web 应用，帮助留学生：
 |----|------|
 | 前端 | Next.js 14 · Tailwind CSS · shadcn/ui · Zustand |
 | 后端 | Python FastAPI · LangChain · ChromaDB |
-| AI | DeepSeek (LLM) · Whisper 本地模型 (STT) · sentence-transformers |
+| AI | DeepSeek V4 (Pro：出题/批改 · Flash：闲聊/分类) · Whisper 本地 · sentence-transformers |
 | 存储 | SQLite · ChromaDB · 文件系统 |
 | 导出 | Pandoc · WeasyPrint |
 

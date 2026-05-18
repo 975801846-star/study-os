@@ -8,10 +8,11 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """全局配置，自动从 .env 文件加载"""
 
-    # LLM
+    # LLM — 按任务复杂度分级
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
-    DEEPSEEK_MODEL: str = "deepseek-chat"
+    DEEPSEEK_MODEL_PRO: str = "deepseek-v4-pro"     # 出题/批改/摘要
+    DEEPSEEK_MODEL_FLASH: str = "deepseek-v4-flash"   # 分类/闲聊/简单问答
 
     # 语音转写 (本地 Whisper)
     WHISPER_PROVIDER: str = "local"   # local (免费开源)
