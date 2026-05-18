@@ -34,7 +34,7 @@ const features = [
     icon: BrainCircuit,
     title: "AI 出题",
     desc: "基于知识库生成选择/简答/案例分析 · 难度可控",
-    status: "v1",
+    status: "已上线",
     gradient: "from-amber-500/20 to-orange-500/10 via-amber-500/5",
     iconBg: "bg-amber-500/10 text-amber-400",
   },
@@ -105,7 +105,7 @@ export default function Home() {
         {/* CTA */}
         <div className="mt-10 flex animate-fade-up items-center justify-center gap-4 [animation-delay:300ms]">
           <a
-            href="#"
+            href="/quiz"
             className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 transition-all hover:from-blue-500 hover:to-indigo-500 hover:shadow-blue-500/30"
           >
             开始使用

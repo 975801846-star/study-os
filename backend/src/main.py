@@ -40,12 +40,7 @@ async def health_check():
     return {"status": "ok", "version": "0.1.0"}
 
 
-# 注册路由（Phase 1-5 逐步启用）
-# from .api import textbooks, lectures, quizzes, search, wrong_book, dashboard, export
-# app.include_router(textbooks.router, prefix="/api/textbooks", tags=["教材"])
-# app.include_router(lectures.router, prefix="/api/lectures", tags=["课堂"])
-# app.include_router(quizzes.router, prefix="/api/quizzes", tags=["题目"])
-# app.include_router(search.router, prefix="/api/search", tags=["搜索"])
-# app.include_router(wrong_book.router, prefix="/api/wrong-book", tags=["错题本"])
-# app.include_router(dashboard.router, prefix="/api/dashboard", tags=["仪表盘"])
-# app.include_router(export.router, prefix="/api/export", tags=["导出"])
+# 注册路由
+from .api import router as quiz_router
+
+app.include_router(quiz_router, prefix="/api/quizzes", tags=["题目"])
