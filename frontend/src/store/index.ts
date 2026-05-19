@@ -68,6 +68,7 @@ interface QuizState {
   setAnswer: (qid: string, answer: string) => void;
   generateQuiz: () => Promise<void>;
   submitAnswers: () => Promise<void>;
+  backToInput: () => void;
   reset: () => void;
 }
 
@@ -173,6 +174,20 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       alert(err.message);
     }
   },
+
+  backToInput: () =>
+    set({
+      quizId: null,
+      quizTitle: "",
+      questions: [],
+      answers: {},
+      submitted: false,
+      submitting: false,
+      score: 0,
+      total: 0,
+      feedback: [],
+      wrongCount: 0,
+    }),
 
   reset: () =>
     set({

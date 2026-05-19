@@ -265,11 +265,11 @@ def detect_chapters(text: str) -> list[dict]:
 
     patterns: list[tuple[str, int]] = [
         # P0: 中文第X章/第X节（最高优先级）
-        (r'(?:^|\n)\s*(第[一二三四五六七八九十百千\d]+[章节])\s*[　\s]*.*?(?=\n|$)', 1),
+        (r'(?:^|\n)\s*(?:#{1,2}\s+)?(第[一二三四五六七八九十百千\d]+[章节])\s*[　\s]*(.*?)(?=\n|$)', 1),
         # P1: 英文 Chapter X
         (r'(?:^|\n)\s*(Chapter\s+\d+[\s:\.\-]*.*?)(?=\n|$)', 1),
-        # P2: Markdown 标题 # ## ###
-        (r'(?:^|\n)\s*(#{1,3}\s+[^\n]+)', 1),
+        # P2: Markdown 标题 # ##（不含 ### 子节）
+        (r'(?:^|\n)\s*(#{1,2}\s+[^\n]+)', 1),
         # P3: 学术论文章节
         (r'(?:^|\n)\s*(Abstract|Introduction|Methods?|Results?|Discussion|Conclusion|References?|Acknowledgments?|附录[\s\d]*|摘要|引言|方法|结果|讨论|结论|参考文献|致谢)[\s:]*', 1),
     ]

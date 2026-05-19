@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import {
+  BookOpen,
   BrainCircuit,
   Check,
   ChevronLeft,
@@ -33,6 +34,7 @@ export default function QuizPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [detecting, setDetecting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = async (file: File) => {
@@ -62,6 +64,31 @@ export default function QuizPage() {
       alert(err.message);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleDetectChapters = async () => {
+    const text = store.sourceContent || store.fullText;
+    if (!text || text.length < 50) {
+      alert("请先输入至少 50 字的文本");
+      return;
+    }
+    setDetecting(true);
+    try {
+      const res = await fetch("/api/quizzes/detect-chapters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "检测失败");
+      store.setFullText(text);
+      store.setChapters(data.data.chapters || []);
+      store.selectChapter(null);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setDetecting(false);
     }
   };
 
@@ -262,6 +289,18 @@ export default function QuizPage() {
           </div>
         )}
 
+        {/* Detect Chapters Button — 手动粘贴时触发 */}
+        {store.chapters.length === 0 && (store.sourceContent.length >= 50) && (
+          <button
+            onClick={handleDetectChapters}
+            disabled={detecting}
+            className="mb-3 flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2 text-xs text-slate-400 transition-colors hover:border-violet-500/30 hover:text-violet-300"
+          >
+            {detecting ? <Loader2 size={14} className="animate-spin" /> : <BookOpen size={14} />}
+            {detecting ? "正在解析章节..." : "解析章节 — 自动拆分第X章/Chapter/Markdown标题"}
+          </button>
+        )}
+
         {/* Text Input */}
         <textarea
           value={store.sourceContent}
@@ -300,17 +339,25 @@ export default function QuizPage() {
         {/* Header */}
         <div className="mb-8 flex items-center gap-4">
           <button
-            onClick={store.reset}
+            onClick={store.backToInput}
+            title="返回选题"
             className="rounded-lg border border-white/10 p-2 text-slate-400 hover:bg-white/5 hover:text-white transition-colors"
           >
             <ChevronLeft size={18} />
           </button>
-          <div>
+          <div className="flex-1">
             <h1 className="text-xl font-bold text-white">{store.quizTitle}</h1>
             <p className="text-xs text-slate-500">
               {store.questions.length} 题 · {store.questionTypes.join("/")}
             </p>
           </div>
+          <button
+            onClick={store.reset}
+            title="重新开始"
+            className="rounded-lg border border-white/10 p-2 text-slate-500 hover:border-rose-500/30 hover:text-rose-400 transition-colors"
+          >
+            <X size={18} />
+          </button>
         </div>
 
         {/* Questions */}
@@ -505,10 +552,16 @@ export default function QuizPage() {
           再做一次
         </button>
         <button
+          onClick={store.backToInput}
+          className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-slate-300 backdrop-blur transition-colors hover:bg-white/10"
+        >
+          选题出题
+        </button>
+        <button
           onClick={store.reset}
           className="flex-1 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition-all hover:from-blue-500 hover:to-indigo-500"
         >
-          出新的题目
+          重新开始
         </button>
       </div>
     </div>

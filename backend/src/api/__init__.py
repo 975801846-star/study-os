@@ -79,12 +79,15 @@ async def upload_source(file: UploadFile = File(...)):
         chapters = detect_chapters(text)
         # 章节过多时只取前 80 个
         if len(chapters) > 80:
+            total_detected = len(chapters)
             chapters = chapters[:80]
             chapters.append({
                 "index": 80,
-                "title": f"（还有 {len(detect_chapters(text)) - 80}+ 个章节未显示，建议分章上传）",
+                "title": f"（还有 {total_detected - 80}+ 个章节未显示，建议分章上传）",
                 "content": "",
                 "char_count": 0,
+                "start_char": 0,
+                "end_char": 0,
             })
 
         return {
@@ -104,6 +107,26 @@ async def upload_source(file: UploadFile = File(...)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"文件解析失败: {str(e)}")
+
+
+@router.post("/detect-chapters")
+async def api_detect_chapters(body: dict):
+    """从纯文本检测章节（用于手动粘贴场景）"""
+    text = body.get("text", "")
+    if not text or len(text) < 50:
+        raise HTTPException(status_code=400, detail="文本太短，至少 50 字符")
+    chapters = detect_chapters(text)
+    return {
+        "success": True,
+        "data": {
+            "char_count": len(text),
+            "chapters": [
+                {"index": c["index"], "title": c["title"], "char_count": c["char_count"],
+                 "start_char": c["start_char"], "end_char": c["end_char"]}
+                for c in chapters
+            ],
+        },
+    }
 
 
 @router.post("/generate", response_model=QuizResponse)
