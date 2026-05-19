@@ -251,3 +251,95 @@ def test_connection() -> dict:
             "base_url": settings.DEEPSEEK_BASE_URL,
             "key_prefix": settings.DEEPSEEK_API_KEY[:10] + "..." if settings.DEEPSEEK_API_KEY else "(空)",
         }
+
+
+# ─── 章节检测 ───
+
+def detect_chapters(text: str) -> list[dict]:
+    """
+    检测文档中的章节，返回 [{index, title, content, char_count}]
+    支持：中文第X章/X节、英文 Chapter X、Markdown 标题、IMRaD 论文结构
+    未检测到章节时返回单元素列表
+    """
+    import re
+
+    patterns: list[tuple[str, int]] = [
+        # P0: 中文第X章/第X节（最高优先级）
+        (r'(?:^|\n)\s*(第[一二三四五六七八九十百千\d]+[章节])\s*[　\s]*.*?(?=\n|$)', 1),
+        # P1: 英文 Chapter X
+        (r'(?:^|\n)\s*(Chapter\s+\d+[\s:\.\-]*.*?)(?=\n|$)', 1),
+        # P2: Markdown 标题 # ## ###
+        (r'(?:^|\n)\s*(#{1,3}\s+[^\n]+)', 1),
+        # P3: 学术论文章节
+        (r'(?:^|\n)\s*(Abstract|Introduction|Methods?|Results?|Discussion|Conclusion|References?|Acknowledgments?|附录[\s\d]*|摘要|引言|方法|结果|讨论|结论|参考文献|致谢)[\s:]*', 1),
+    ]
+
+    chapters = []
+    matched_starts: set[int] = set()
+
+    for pattern, _ in patterns:
+        for m in re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE):
+            pos = m.start()
+            # 去重：同位置不同 pattern 只取第一个
+            if any(abs(pos - ms) < 10 for ms in matched_starts):
+                continue
+            matched_starts.add(pos)
+            chapters.append({
+                "pos": pos,
+                "title": m.group(0).strip()[:80],
+            })
+
+    chapters.sort(key=lambda c: c["pos"])
+
+    # 无章节则整篇为一个
+    if not chapters:
+        return [{
+            "index": 0,
+            "title": "全文",
+            "content": text,
+            "char_count": len(text),
+        }]
+
+    # 根据位置切分内容
+    result = []
+    n = len(chapters)
+    for i, ch in enumerate(chapters):
+        start = ch["pos"]
+        end = chapters[i + 1]["pos"] if i + 1 < n else len(text)
+        content = text[start:end].strip()
+        if len(content) < 20:
+            continue  # 跳过太短的
+        result.append({
+            "index": len(result),
+            "title": ch["title"],
+            "content": content,
+            "char_count": len(content),
+            "start_char": start,
+            "end_char": end,
+        })
+
+    # 如果第一个章节前有内容，作为「前言/目录」
+    first_pos = chapters[0]["pos"]
+    if first_pos > 50:
+        preamble = text[:first_pos].strip()
+        if len(preamble) > 50:
+            result.insert(0, {
+                "index": 0,
+                "title": "前言/摘要",
+                "content": preamble,
+                "char_count": len(preamble),
+                "start_char": 0,
+                "end_char": first_pos,
+            })
+            # 重新编号
+            for i, r in enumerate(result):
+                r["index"] = i
+
+    return result if result else [{
+        "index": 0,
+        "title": "全文",
+        "content": text,
+        "char_count": len(text),
+        "start_char": 0,
+        "end_char": len(text),
+    }]

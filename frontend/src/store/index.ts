@@ -23,9 +23,22 @@ export interface FeedbackItem {
   knowledge_point: string;
 }
 
+export interface ChapterInfo {
+  index: number;
+  title: string;
+  char_count: number;
+  start_char: number;
+  end_char: number;
+}
+
 interface QuizState {
+  // 上传
+  fullText: string;
+  chapters: ChapterInfo[];
+
   // 生成
   sourceContent: string;
+  selectedChapterIndex: number | null; // null = 全文
   questionTypes: string[];
   count: number;
   difficulty: string;
@@ -45,6 +58,9 @@ interface QuizState {
   wrongCount: number;
 
   // Actions
+  setFullText: (text: string) => void;
+  setChapters: (chapters: ChapterInfo[]) => void;
+  selectChapter: (index: number | null) => void;
   setSourceContent: (text: string) => void;
   setQuestionTypes: (types: string[]) => void;
   setCount: (n: number) => void;
@@ -58,7 +74,10 @@ interface QuizState {
 const BASE = "/api/quizzes";
 
 export const useQuizStore = create<QuizState>((set, get) => ({
+  fullText: "",
+  chapters: [],
   sourceContent: "",
+  selectedChapterIndex: null,
   questionTypes: ["choice", "tf"],
   count: 5,
   difficulty: "basic",
@@ -76,6 +95,20 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   feedback: [],
   wrongCount: 0,
 
+  setFullText: (text) => set({ fullText: text }),
+  setChapters: (chapters) => set({ chapters }),
+  selectChapter: (index) => {
+    const s = get();
+    if (index === null || index < 0 || index >= s.chapters.length) {
+      // 全文模式
+      set({ sourceContent: s.fullText, selectedChapterIndex: null });
+      return;
+    }
+    const ch = s.chapters[index];
+    if (!ch) return;
+    const content = s.fullText.slice(ch.start_char, ch.end_char);
+    set({ sourceContent: content, selectedChapterIndex: index });
+  },
   setSourceContent: (text) => set({ sourceContent: text }),
   setQuestionTypes: (types) => set({ questionTypes: types }),
   setCount: (n) => set({ count: n }),
@@ -143,7 +176,10 @@ export const useQuizStore = create<QuizState>((set, get) => ({
 
   reset: () =>
     set({
+      fullText: "",
+      chapters: [],
       sourceContent: "",
+      selectedChapterIndex: null,
       quizId: null,
       quizTitle: "",
       questions: [],

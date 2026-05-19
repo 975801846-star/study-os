@@ -20,7 +20,7 @@ from ..schemas import (
     SubmitAnswerRequest,
     SubmissionResponse,
 )
-from ..services import QuizServiceError, generate_quiz, grade_submission, test_connection
+from ..services import QuizServiceError, generate_quiz, grade_submission, test_connection, detect_chapters
 
 router = APIRouter()
 
@@ -69,9 +69,23 @@ async def upload_source(file: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail="文档内容为空")
 
         char_count = len(text)
-        truncated = char_count > 50000
+        # 50 万字符上限（约一本教材），超出截断并提示
+        max_chars = 500000
+        truncated = char_count > max_chars
         if truncated:
-            text = text[:50000] + "\n\n（内容过长，已截取前 50000 字符）"
+            text = text[:max_chars] + "\n\n（内容过长，已截取前 50 万字符，建议分册/分章上传）"
+
+        # 检测章节
+        chapters = detect_chapters(text)
+        # 章节过多时只取前 80 个
+        if len(chapters) > 80:
+            chapters = chapters[:80]
+            chapters.append({
+                "index": 80,
+                "title": f"（还有 {len(detect_chapters(text)) - 80}+ 个章节未显示，建议分章上传）",
+                "content": "",
+                "char_count": 0,
+            })
 
         return {
             "success": True,
@@ -81,6 +95,11 @@ async def upload_source(file: UploadFile = File(...)):
                 "char_count": char_count,
                 "truncated": truncated,
                 "content": text,
+                "chapters": [
+                    {"index": c["index"], "title": c["title"], "char_count": c["char_count"],
+                     "start_char": c.get("start_char", 0), "end_char": c.get("end_char", 0)}
+                    for c in chapters
+                ],
             },
         }
     except Exception as e:

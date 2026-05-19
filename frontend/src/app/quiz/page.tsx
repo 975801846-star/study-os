@@ -52,8 +52,12 @@ export default function QuizPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "上传失败");
-      store.setSourceContent(data.data.content);
-      setUploadedFile(`${data.data.filename} (${(data.data.char_count / 1000).toFixed(1)}k 字${data.data.truncated ? "，已截取" : ""})`);
+      const d = data.data;
+      store.setFullText(d.content);
+      store.setChapters(d.chapters || []);
+      // 默认选全文
+      store.selectChapter(null);
+      setUploadedFile(`${d.filename} (${(d.char_count / 1000).toFixed(1)}k 字${d.truncated ? "，已截取" : ""}${d.chapters ? ` · ${d.chapters.length} 个章节` : ""})`);
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -227,12 +231,43 @@ export default function QuizPage() {
           <hr className="flex-1 border-white/5" />
         </div>
 
+        {/* Chapter Selector */}
+        {store.chapters.length > 0 && (
+          <div className="mb-3">
+            <label className="mb-1.5 block text-[11px] text-slate-500">
+              选择章节（已解析 {store.chapters.length} 个章节）
+            </label>
+            <select
+              value={store.selectedChapterIndex ?? "all"}
+              onChange={(e) => {
+                const v = e.target.value;
+                store.selectChapter(v === "all" ? null : Number(v));
+              }}
+              className="w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-xs text-slate-300"
+            >
+              <option value="all">📚 全文（{store.fullText.length.toLocaleString()} 字）</option>
+              {store.chapters.map((ch) => (
+                <option key={ch.index} value={ch.index}>
+                  {ch.title}（{ch.char_count.toLocaleString()} 字）
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Text Preview — 选章后显示对应内容的前 500 字 */}
+        {store.chapters.length > 0 && (
+          <div className="mb-3 max-h-32 overflow-y-auto rounded-lg border border-white/5 bg-white/[0.02] p-3 text-xs text-slate-500 leading-relaxed">
+            {(store.sourceContent || store.fullText).slice(0, 500)}{(store.sourceContent || store.fullText).length > 500 ? "..." : ""}
+          </div>
+        )}
+
         {/* Text Input */}
         <textarea
           value={store.sourceContent}
           onChange={(e) => store.setSourceContent(e.target.value)}
-          placeholder="在此粘贴学习材料...（至少 50 字）"
-          rows={12}
+          placeholder={store.chapters.length > 0 ? "或手动修改上方选章内容..." : "在此粘贴学习材料...（至少 50 字）"}
+          rows={store.chapters.length > 0 ? 4 : 12}
           className="w-full rounded-xl border border-white/10 bg-white/5 p-5 text-sm text-slate-200 placeholder-slate-600 backdrop-blur transition-colors focus:border-blue-500/50 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
         />
 
