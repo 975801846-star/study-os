@@ -280,8 +280,8 @@ def detect_chapters(text: str) -> list[dict]:
     for pattern, _ in patterns:
         for m in re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE):
             pos = m.start()
-            # 去重：同位置不同 pattern 只取第一个
-            if any(abs(pos - ms) < 10 for ms in matched_starts):
+            # 去重：同位置不同 pattern 只取第一个（3字符容差）
+            if any(abs(pos - ms) < 3 for ms in matched_starts):
                 continue
             matched_starts.add(pos)
             chapters.append({
