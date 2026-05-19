@@ -31,7 +31,7 @@ def _call_llm(prompt: str, use_pro: bool = True, temperature: float = 0.3) -> st
             model=model,
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
-            max_tokens=4096,
+            max_tokens=8192,
         )
     except Exception as e:
         msg = str(e)
@@ -125,7 +125,7 @@ def generate_quiz(
 - 直接输出 JSON 数组
 
 ## 材料
-{content[:8000]}
+{content[:32000]}
 """
     raw = _call_llm(SYSTEM_GENERATE + "\n\n" + user_prompt, use_pro=True)
 
@@ -154,7 +154,7 @@ def generate_quiz(
             q["id"] = f"q{i+1}"
 
     # Get title
-    title_prompt = f"为以下材料出的题目集起一个简短标题（10字以内，纯文本无标点）：\n{content[:500]}"
+    title_prompt = f"为以下材料出的题目集起一个简短标题（10字以内，纯文本无标点）：\n{content[:2000]}"
     title = _call_llm(title_prompt, use_pro=False, temperature=0.7).strip().strip('"').strip("《》")
 
     return title or "知识测验", questions
