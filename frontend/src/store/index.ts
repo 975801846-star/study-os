@@ -72,7 +72,8 @@ interface QuizState {
   reset: () => void;
 }
 
-const BASE = "/api/quizzes";
+// 直连后端，绕过 Next.js 代理避免 ECONNRESET
+const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/quizzes";
 
 export const useQuizStore = create<QuizState>((set, get) => ({
   fullText: "",

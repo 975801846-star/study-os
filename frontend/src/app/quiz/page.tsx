@@ -28,6 +28,8 @@ const diffOptions = [
   { value: "comprehensive", label: "综合" },
 ];
 
+const API_BASE = "http://localhost:8000/api/quizzes";
+
 export default function QuizPage() {
   const store = useQuizStore();
   const [showSettings, setShowSettings] = useState(false);
@@ -48,7 +50,7 @@ export default function QuizPage() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch("/api/quizzes/upload-source", {
+      const res = await fetch(`${API_BASE}/upload-source`, {
         method: "POST",
         body: form,
       });
@@ -75,7 +77,7 @@ export default function QuizPage() {
     }
     setDetecting(true);
     try {
-      const res = await fetch("/api/quizzes/detect-chapters", {
+      const res = await fetch(`${API_BASE}/detect-chapters`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
