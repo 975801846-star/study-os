@@ -32,6 +32,10 @@ export interface ChapterInfo {
 }
 
 interface QuizState {
+  // 模式
+  mode: "single" | "multi";
+  multiSources: { label: string; content: string }[];
+
   // 上传
   fullText: string;
   chapters: ChapterInfo[];
@@ -58,6 +62,11 @@ interface QuizState {
   wrongCount: number;
 
   // Actions
+  setMode: (m: "single" | "multi") => void;
+  addSource: () => void;
+  removeSource: (i: number) => void;
+  updateSourceLabel: (i: number, label: string) => void;
+  updateSourceContent: (i: number, content: string) => void;
   setFullText: (text: string) => void;
   setChapters: (chapters: ChapterInfo[]) => void;
   selectChapter: (index: number | null) => void;
@@ -67,6 +76,7 @@ interface QuizState {
   setDifficulty: (d: string) => void;
   setAnswer: (qid: string, answer: string) => void;
   generateQuiz: () => Promise<void>;
+  generateMulti: () => Promise<void>;
   submitAnswers: () => Promise<void>;
   backToInput: () => void;
   reset: () => void;
@@ -76,6 +86,8 @@ interface QuizState {
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/quizzes";
 
 export const useQuizStore = create<QuizState>((set, get) => ({
+  mode: "single",
+  multiSources: [{ label: "", content: "" }],
   fullText: "",
   chapters: [],
   sourceContent: "",
@@ -96,6 +108,17 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   total: 0,
   feedback: [],
   wrongCount: 0,
+
+  setMode: (m) => set({ mode: m }),
+  addSource: () => set((s) => ({ multiSources: [...s.multiSources, { label: "", content: "" }] })),
+  removeSource: (i) =>
+    set((s) => ({
+      multiSources: s.multiSources.length > 1 ? s.multiSources.filter((_, j) => j !== i) : s.multiSources,
+    })),
+  updateSourceLabel: (i, label) =>
+    set((s) => ({ multiSources: s.multiSources.map((src, j) => (j === i ? { ...src, label } : src)) })),
+  updateSourceContent: (i, content) =>
+    set((s) => ({ multiSources: s.multiSources.map((src, j) => (j === i ? { ...src, content } : src)) })),
 
   setFullText: (text) => set({ fullText: text }),
   setChapters: (chapters) => set({ chapters }),
@@ -127,6 +150,44 @@ export const useQuizStore = create<QuizState>((set, get) => ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           source_content: s.sourceContent,
+          question_types: s.questionTypes,
+          count: s.count,
+          difficulty: s.difficulty,
+          language: s.language,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "生成失败");
+      set({
+        quizId: data.id,
+        quizTitle: data.title,
+        questions: data.questions,
+        generating: false,
+      });
+    } catch (err: any) {
+      set({ generating: false });
+      alert(err.message);
+    }
+  },
+
+  generateMulti: async () => {
+    const s = get();
+    const valid = s.multiSources.filter((src) => src.content.length >= 50);
+    if (valid.length === 0) {
+      alert("至少需要 1 篇文献（≥50 字）");
+      return;
+    }
+    set({ generating: true });
+    try {
+      const res = await fetch(`${BASE}/generate-multi`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sources: valid.map((src) => ({
+            label: src.label || `文献`,
+            content: src.content,
+            source_type: "research_paper",
+          })),
           question_types: s.questionTypes,
           count: s.count,
           difficulty: s.difficulty,
@@ -192,6 +253,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
 
   reset: () =>
     set({
+      multiSources: [{ label: "", content: "" }],
       fullText: "",
       chapters: [],
       sourceContent: "",

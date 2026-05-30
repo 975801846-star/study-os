@@ -7,10 +7,13 @@ import {
   Check,
   ChevronLeft,
   FileText,
+  Layers,
   Lightbulb,
   Loader2,
+  Plus,
   Sparkles,
   Target,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
@@ -147,6 +150,25 @@ export default function QuizPage() {
                     {t.label}
                   </button>
                 ))}
+                {store.mode === "multi" && (
+                  <button
+                    onClick={() => {
+                      const v = "cross_paper";
+                      store.setQuestionTypes(
+                        store.questionTypes.includes(v)
+                          ? store.questionTypes.filter((x) => x !== v)
+                          : [...store.questionTypes, v]
+                      );
+                    }}
+                    className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                      store.questionTypes.includes("cross_paper")
+                        ? "bg-violet-500/20 text-violet-300 ring-1 ring-violet-500/30"
+                        : "bg-slate-800 text-slate-500 hover:bg-slate-700"
+                    }`}
+                  >
+                    跨论文对比
+                  </button>
+                )}
               </div>
             </div>
             {/* 数量 */}
@@ -196,6 +218,33 @@ export default function QuizPage() {
           </div>
         )}
 
+        {/* Mode Toggle */}
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-1">
+          <button
+            onClick={() => store.setMode("single")}
+            className={`flex-1 rounded-lg px-4 py-2 text-xs font-medium transition-all ${
+              store.mode === "single"
+                ? "bg-blue-500/20 text-blue-300"
+                : "text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            📄 单文献出题
+          </button>
+          <button
+            onClick={() => store.setMode("multi")}
+            className={`flex-1 rounded-lg px-4 py-2 text-xs font-medium transition-all ${
+              store.mode === "multi"
+                ? "bg-violet-500/20 text-violet-300"
+                : "text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            📚 多文献对比
+          </button>
+        </div>
+
+        {/* === SINGLE MODE === */}
+        {store.mode === "single" && (
+          <>
         {/* Upload Zone */}
         <div
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -330,6 +379,86 @@ export default function QuizPage() {
             </>
           )}
         </button>
+          </>
+        )}
+
+        {/* === MULTI MODE === */}
+        {store.mode === "multi" && (
+          <>
+            <div className="mb-2 flex items-center justify-between">
+              <label className="text-[11px] text-slate-500">
+                已添加 {store.multiSources.filter(s => s.content.length >= 50).length}/{store.multiSources.length} 篇文献
+              </label>
+              <button
+                onClick={store.addSource}
+                disabled={store.multiSources.length >= 10}
+                className="flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[11px] text-violet-300 hover:bg-violet-500/20 disabled:opacity-30 transition-colors"
+              >
+                <Plus size={12} />
+                添加文献
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {store.multiSources.map((src, i) => (
+                <div
+                  key={i}
+                  className="rounded-xl border border-white/10 bg-white/[0.02] p-4 backdrop-blur"
+                >
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-violet-500/20 text-[10px] font-bold text-violet-400">
+                      {i + 1}
+                    </span>
+                    <input
+                      value={src.label}
+                      onChange={(e) => store.updateSourceLabel(i, e.target.value)}
+                      placeholder={`文献 ${i + 1} 标签（如 Oppici 2018 传球迁移）`}
+                      className="flex-1 rounded-md border border-white/5 bg-white/5 px-3 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:border-violet-500/50 focus:outline-none"
+                    />
+                    {store.multiSources.length > 1 && (
+                      <button
+                        onClick={() => store.removeSource(i)}
+                        className="rounded-md p-1 text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                        title="移除"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    value={src.content}
+                    onChange={(e) => store.updateSourceContent(i, e.target.value)}
+                    placeholder="粘贴文献全文...（≥50 字，从论文精要目录复制即可）"
+                    rows={6}
+                    className="w-full rounded-lg border border-white/5 bg-white/5 p-3 text-sm text-slate-200 placeholder-slate-600 transition-colors focus:border-violet-500/50 focus:outline-none resize-vertical"
+                  />
+                  <div className="mt-1 text-right text-[10px] text-slate-600">
+                    {src.content.length} 字{src.content.length > 0 && src.content.length < 50 ? "（需 ≥50 字）" : src.content.length >= 50 ? " ✅" : ""}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Generate Multi Button */}
+            <button
+              onClick={store.generateMulti}
+              disabled={store.multiSources.filter(s => s.content.length >= 50).length === 0 || store.generating}
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-500/20 transition-all hover:from-violet-400 hover:to-purple-400 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {store.generating ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  AI 正在综合出题...
+                </>
+              ) : (
+                <>
+                  <Layers size={16} />
+                  多文献综合出题
+                </>
+              )}
+            </button>
+          </>
+        )}
       </div>
     );
   }
