@@ -60,12 +60,41 @@ class Lecture(Base):
     textbook = relationship("Textbook", back_populates="lectures")
 
 
+class SourceFingerprint(Base):
+    """文献指纹表 — SHA256 去重，避免重复生成"""
+    __tablename__ = "source_fingerprints"
+
+    id = Column(String(12), primary_key=True, default=gen_id)
+    fingerprint = Column(String(64), nullable=False, unique=True, index=True)
+    source_content = Column(Text, default="")
+    char_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    cache_entries = relationship("QuizCache", back_populates="source", cascade="all, delete-orphan")
+
+
+class QuizCache(Base):
+    """出题缓存表 — 相同参数命中则跳过 LLM 调用"""
+    __tablename__ = "quiz_cache"
+
+    id = Column(String(12), primary_key=True, default=gen_id)
+    source_id = Column(String(12), ForeignKey("source_fingerprints.id", ondelete="CASCADE"), nullable=False, index=True)
+    question_types_json = Column(String(256), default="")
+    count = Column(Integer, default=5)
+    difficulty = Column(String(32), default="basic")
+    language = Column(String(8), default="zh")
+    quiz_id = Column(String(12), ForeignKey("quizzes.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    source = relationship("SourceFingerprint", back_populates="cache_entries")
+
+
 class Quiz(Base):
     __tablename__ = "quizzes"
 
     id = Column(String(12), primary_key=True, default=gen_id)
     title = Column(String(256), default="")
-    source_type = Column(String(32), default="text")  # text|textbook|lecture
+    source_type = Column(String(32), default="text")  # text|textbook|lecture|multi_paper
     source_ids = Column(Text, default="")  # JSON array
     source_content = Column(Text, default="")  # 原始输入文本
     questions_json = Column(Text, default="")  # JSON: 题目列表

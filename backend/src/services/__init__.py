@@ -3,11 +3,13 @@ Quiz Service — AI 出题 + 批改引擎
 
 DeepSeek V4 驱动：Pro 负责出题/批改，Flash 负责题型分类/格式校验
 """
+import hashlib
 import json
 import logging
 import traceback
 
 from openai import OpenAI
+from sqlalchemy.orm import Session
 
 from ..config import settings
 
@@ -251,6 +253,234 @@ def test_connection() -> dict:
             "base_url": settings.DEEPSEEK_BASE_URL,
             "key_prefix": settings.DEEPSEEK_API_KEY[:10] + "..." if settings.DEEPSEEK_API_KEY else "(空)",
         }
+
+
+# ─── 指纹缓存 ───
+
+def hash_source(content: str) -> str:
+    """SHA256 指纹：规范化后取前 3000 字符的哈希"""
+    normalized = " ".join(content.strip().split())  # 去多余空白
+    sample = normalized[:3000]
+    return hashlib.sha256(sample.encode("utf-8")).hexdigest()
+
+
+def _cache_key(question_types: list[str], count: int, difficulty: str, language: str) -> str:
+    """参数稳定排序 → JSON key"""
+    return json.dumps({
+        "types": sorted(question_types),
+        "count": count,
+        "difficulty": difficulty,
+        "language": language,
+    }, ensure_ascii=False)
+
+
+def _lookup_cache(
+    fingerprint: str,
+    question_types: list[str],
+    count: int,
+    difficulty: str,
+    language: str,
+    db: Session,
+) -> dict | None:
+    """命中缓存则返回题目 dict，否则返回 None"""
+    from ..models import SourceFingerprint, QuizCache, Quiz
+
+    src = db.query(SourceFingerprint).filter(
+        SourceFingerprint.fingerprint == fingerprint
+    ).first()
+    if not src:
+        return None
+
+    key = _cache_key(question_types, count, difficulty, language)
+    entry = (
+        db.query(QuizCache)
+        .filter(
+            QuizCache.source_id == src.id,
+            QuizCache.question_types_json == key,
+        )
+        .order_by(QuizCache.created_at.desc())
+        .first()
+    )
+    if not entry or not entry.quiz_id:
+        return None
+
+    quiz = db.query(Quiz).filter(Quiz.id == entry.quiz_id).first()
+    if not quiz:
+        return None
+
+    logger.info(f"🎯 Cache HIT: fingerprint={fingerprint[:12]}... param_key={key[:40]}...")
+    return {
+        "quiz_id": quiz.id,
+        "title": quiz.title,
+        "questions": json.loads(quiz.questions_json) if quiz.questions_json else [],
+        "created_at": quiz.created_at.isoformat() if quiz.created_at else "",
+        "source_type": quiz.source_type,
+    }
+
+
+def _save_to_cache(
+    fingerprint: str,
+    content: str,
+    question_types: list[str],
+    count: int,
+    difficulty: str,
+    language: str,
+    quiz_id: str,
+    db: Session,
+):
+    """保存指纹和出题缓存"""
+    from ..models import SourceFingerprint, QuizCache
+
+    # UPSERT 指纹
+    src = db.query(SourceFingerprint).filter(
+        SourceFingerprint.fingerprint == fingerprint
+    ).first()
+    if not src:
+        src = SourceFingerprint(
+            fingerprint=fingerprint,
+            source_content=content[:5000],
+            char_count=len(content),
+        )
+        db.add(src)
+        db.flush()
+
+    # UPSERT 缓存
+    key = _cache_key(question_types, count, difficulty, language)
+    existing = db.query(QuizCache).filter(
+        QuizCache.source_id == src.id,
+        QuizCache.question_types_json == key,
+    ).first()
+    if not existing:
+        entry = QuizCache(
+            source_id=src.id,
+            question_types_json=key,
+            count=count,
+            difficulty=difficulty,
+            language=language,
+            quiz_id=quiz_id,
+        )
+        db.add(entry)
+        db.commit()
+        logger.info(f"💾 Cache SAVED: fingerprint={fingerprint[:12]}... quiz_id={quiz_id}")
+
+
+# ─── 多文献出题 ───
+
+SYSTEM_MULTI = """你是一位大学课程助教，擅长根据多篇文献生成综合对比测验题目。
+
+## 题型说明
+- choice: 选择题，4个选项
+- tf: 判断题
+- short_answer: 简答题
+- case_study: 案例分析题
+- cross_paper: 跨论文对比题（对比两篇或多篇论文的概念、方法、结论）
+
+## 规则
+1. 严格按用户指定的题型和数量生成题目
+2. 选择题必须有 4 个选项（A/B/C/D），只有一个正确答案
+3. 判断题答案只能是"对"或"错"
+4. cross_paper 题应指出涉及的论文名，对比其核心观点或方法的异同
+5. 每道题标注对应的知识点（knowledge_point），cross_paper 标注涉及的文献
+6. 题目应均匀覆盖所有输入的文献
+7. 输出**纯 JSON 数组**，不要 markdown 代码块，不要额外说明
+
+## JSON 格式
+[
+  {
+    "id": "q1",
+    "type": "cross_paper",
+    "question": "Oppici(2018)和 Travassos(2018)对技能迁移机制的解释有何异同？",
+    "answer": "Oppici强调...而Travassos强调...",
+    "explanation": "解析文字",
+    "knowledge_point": "技能迁移理论·跨文献对比·Oppici vs Travassos"
+  }
+]"""
+
+
+def generate_quiz_multi(
+    sources: list[dict],
+    question_types: list[str],
+    count: int = 10,
+    difficulty: str = "comprehensive",
+    language: str = "zh",
+) -> tuple[str, list[dict]]:
+    """
+    多文献综合出题
+
+    Args:
+        sources: [{"label": "...", "content": "...", "source_type": "..."}, ...]
+        question_types: 题型列表（含 cross_paper）
+        count: 总题目数
+        difficulty: basic|advanced|comprehensive
+        language: zh|en
+
+    Returns:
+        (title, questions_list)
+    """
+    type_map = {
+        "choice": "选择题",
+        "tf": "判断题",
+        "short_answer": "简答题",
+        "case_study": "案例分析题",
+        "cross_paper": "跨论文对比题",
+    }
+    diff_map = {"basic": "基础概念", "advanced": "进阶应用", "comprehensive": "综合分析"}
+    lang_map = {"zh": "中文", "en": "英文"}
+
+    types_str = "、".join(type_map.get(t, t) for t in question_types)
+
+    # 组装多文献内容
+    sources_text = ""
+    for i, src in enumerate(sources):
+        label = src.get("label", f"文献{i+1}")
+        sources_text += f"\n### 文献{i+1}：{label}\n{src['content'][:12000]}\n"
+
+    per_paper = max(1, count // len(sources))
+
+    user_prompt = f"""请根据以下 {len(sources)} 篇文献生成 {count} 道题目：
+
+## 要求
+- 题型：{types_str}
+- 难度：{diff_map.get(difficulty, difficulty)}
+- 语言：{lang_map.get(language, language)}
+- 每篇文献至少 {per_paper} 题，确保均匀覆盖
+- 至少 2 道 cross_paper 对比题（如对比两篇论文的理论框架、研究方法、核心发现）
+- 直接输出 JSON 数组
+
+{sources_text}"""
+
+    raw = _call_llm(SYSTEM_MULTI + "\n\n" + user_prompt, use_pro=True)
+
+    # Clean possible markdown wrapper
+    raw = raw.strip()
+    if raw.startswith("```"):
+        lines = raw.split("\n")
+        raw = "\n".join(lines[1:-1])
+
+    try:
+        questions = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning(f"Multi JSON parse failed, raw preview: {raw[:500]}")
+        try:
+            fix_prompt = f"以下文本应该是一个 JSON 数组。请修复格式问题，只输出合法的 JSON 数组：\n{raw[:3000]}"
+            fixed = _call_llm(fix_prompt, use_pro=False, temperature=0)
+            fixed = fixed.strip().lstrip("```json").rstrip("```").strip()
+            questions = json.loads(fixed)
+        except Exception as e:
+            raise QuizServiceError(f"多文献题目解析失败，AI 返回格式异常：{str(e)[:200]}")
+
+    # Ensure unique IDs
+    for i, q in enumerate(questions):
+        if "id" not in q:
+            q["id"] = f"q{i+1}"
+
+    # Title
+    labels = [s.get("label", "") for s in sources[:3]]
+    labels_str = "、".join(l for l in labels if l)[:30]
+    title_prompt = f"为以下多文献题目集起一个简短标题（12字以内，纯文本无标点）：{labels_str}"
+    title = _call_llm(title_prompt, use_pro=False, temperature=0.7).strip().strip('"').strip("《》")
+
+    return title or "多文献综合测验", questions
 
 
 # ─── 章节检测 ───

@@ -1,6 +1,7 @@
 """
 Quiz API — 出题 / 提交 / 批改 / 文件上传
 """
+import hashlib
 import json
 import os
 import tempfile
@@ -14,13 +15,24 @@ from ..database import get_db
 from ..models import Quiz, QuizSubmission, WrongBookItem
 from ..schemas import (
     FeedbackItem,
+    MultiQuizGenerateRequest,
     QuestionItem,
     QuizGenerateRequest,
     QuizResponse,
     SubmitAnswerRequest,
     SubmissionResponse,
 )
-from ..services import QuizServiceError, generate_quiz, grade_submission, test_connection, detect_chapters
+from ..services import (
+    QuizServiceError,
+    generate_quiz,
+    generate_quiz_multi,
+    grade_submission,
+    hash_source,
+    _lookup_cache,
+    _save_to_cache,
+    test_connection,
+    detect_chapters,
+)
 
 router = APIRouter()
 
@@ -129,9 +141,34 @@ async def api_detect_chapters(body: dict):
     }
 
 
-@router.post("/generate", response_model=QuizResponse)
+@router.post("/generate")
 def api_generate_quiz(req: QuizGenerateRequest, db: Session = Depends(get_db)):
-    """生成题目"""
+    """生成题目（带指纹缓存——相同输入+参数命中则 0 token）"""
+    cached = False
+
+    # 1. 指纹查缓存
+    fingerprint = hash_source(req.source_content)
+    hit = _lookup_cache(
+        fingerprint,
+        req.question_types,
+        req.count,
+        req.difficulty,
+        req.language,
+        db,
+    )
+
+    if hit:
+        return QuizResponse(
+            id=hit["quiz_id"],
+            title=hit["title"],
+            source_type=hit.get("source_type", req.source_type),
+            status="done",
+            questions=hit["questions"],
+            created_at=hit["created_at"],
+            cached=True,
+        )
+
+    # 2. 缓存未命中 → LLM 生成
     try:
         title, questions = generate_quiz(
             content=req.source_content,
@@ -145,7 +182,7 @@ def api_generate_quiz(req: QuizGenerateRequest, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"生成失败: {str(e)}")
 
-    # 保存到数据库
+    # 3. 保存到 quizzes 表
     quiz = Quiz(
         title=title,
         source_type=req.source_type,
@@ -157,6 +194,18 @@ def api_generate_quiz(req: QuizGenerateRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(quiz)
 
+    # 4. 保存缓存
+    _save_to_cache(
+        fingerprint,
+        req.source_content,
+        req.question_types,
+        req.count,
+        req.difficulty,
+        req.language,
+        quiz.id,
+        db,
+    )
+
     return QuizResponse(
         id=quiz.id,
         title=title,
@@ -164,6 +213,74 @@ def api_generate_quiz(req: QuizGenerateRequest, db: Session = Depends(get_db)):
         status="done",
         questions=questions,
         created_at=quiz.created_at.isoformat() if quiz.created_at else "",
+        cached=cached,
+    )
+
+
+@router.post("/generate-multi")
+def api_generate_quiz_multi(req: MultiQuizGenerateRequest, db: Session = Depends(get_db)):
+    """多文献综合出题（含跨论文对比题 cross_paper）"""
+    # 转 dict
+    sources = [s.model_dump() for s in req.sources]
+
+    # 组合指纹（多文献联合哈希）
+    fp_parts = [hash_source(s["content"]) for s in sources]
+    combined_fp = hashlib.sha256("".join(sorted(fp_parts)).encode()).hexdigest()
+
+    # 查缓存
+    hit = _lookup_cache(combined_fp, req.question_types, req.count, req.difficulty, req.language, db)
+    if hit:
+        return QuizResponse(
+            id=hit["quiz_id"],
+            title=hit["title"],
+            source_type=hit.get("source_type", "multi_paper"),
+            status="done",
+            questions=hit["questions"],
+            created_at=hit["created_at"],
+            cached=True,
+        )
+
+    # 生成
+    try:
+        title, questions = generate_quiz_multi(
+            sources=sources,
+            question_types=req.question_types,
+            count=req.count,
+            difficulty=req.difficulty,
+            language=req.language,
+        )
+    except QuizServiceError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"多文献出题失败: {str(e)}")
+
+    # 组装 source_content
+    combined_content = "\n\n===SEPARATOR===\n\n".join(
+        f"[{s.get('label', '')}] {s['content'][:3000]}" for s in sources
+    )
+
+    quiz = Quiz(
+        title=title,
+        source_type="multi_paper",
+        source_content=combined_content,
+        questions_json=json.dumps(questions, ensure_ascii=False),
+        status="done",
+    )
+    db.add(quiz)
+    db.commit()
+    db.refresh(quiz)
+
+    # 保存缓存
+    _save_to_cache(combined_fp, combined_content, req.question_types, req.count, req.difficulty, req.language, quiz.id, db)
+
+    return QuizResponse(
+        id=quiz.id,
+        title=title,
+        source_type="multi_paper",
+        status="done",
+        questions=questions,
+        created_at=quiz.created_at.isoformat() if quiz.created_at else "",
+        cached=False,
     )
 
 

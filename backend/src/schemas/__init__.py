@@ -14,10 +14,29 @@ class QuizGenerateRequest(BaseModel):
     source_type: str = Field(default="text", description="text|textbook|lecture")
     question_types: list[str] = Field(
         default=["choice", "tf", "short_answer"],
-        description="题型: choice / tf / short_answer / case_study",
+        description="题型: choice / tf / short_answer / case_study / cross_paper",
     )
     count: int = Field(default=5, ge=1, le=30, description="题目数量")
     difficulty: str = Field(default="basic", description="basic|advanced|comprehensive")
+    language: str = Field(default="zh", description="zh|en")
+
+
+class MultiSourceItem(BaseModel):
+    """多文献请求中的单个来源"""
+    label: str = Field(default="", description="文献标签（如 Oppici 2018 传球迁移）")
+    content: str = Field(..., min_length=50, description="文献全文")
+    source_type: str = Field(default="research_paper", description="research_paper|review|textbook|lecture")
+
+
+class MultiQuizGenerateRequest(BaseModel):
+    """多文献综合出题请求"""
+    sources: list[MultiSourceItem] = Field(..., min_length=1, max_length=10, description="文献列表（1-10篇）")
+    question_types: list[str] = Field(
+        default=["choice", "tf", "short_answer", "cross_paper"],
+        description="题型: choice / tf / short_answer / case_study / cross_paper",
+    )
+    count: int = Field(default=10, ge=1, le=30, description="总题目数量")
+    difficulty: str = Field(default="comprehensive", description="basic|advanced|comprehensive")
     language: str = Field(default="zh", description="zh|en")
 
 
@@ -38,6 +57,7 @@ class QuizResponse(BaseModel):
     status: str
     questions: list[QuestionItem] = []
     created_at: str = ""
+    cached: bool = False  # 是否来自缓存（0 token 命中）
 
 
 # ──── Submission ────
